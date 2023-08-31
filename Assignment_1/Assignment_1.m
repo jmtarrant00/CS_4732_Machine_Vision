@@ -1,12 +1,12 @@
 % Load the image
 image = imread('rose.jpg');
 
-% Down-sample the image to different sizes
+% Downsample the image to different sizes
 downsampled_512 = customResize(image, 512, 512);
 downsampled_256 = customResize(image, 256, 256);
 downsampled_128 = customResize(image, 128, 128);
 
-% Up-sample the images back to 1024x1024
+% Upsample the images back to 1024x1024
 upsampled_512 = customResize(downsampled_512, 1024, 1024);
 upsampled_256 = customResize(downsampled_256, 1024, 1024);
 upsampled_128 = customResize(downsampled_128, 1024, 1024);
