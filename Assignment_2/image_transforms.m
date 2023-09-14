@@ -27,7 +27,7 @@ imshow(fourier);
 title("Pre Log Transform")
 subplot(2,2,2);
 imshow(log_transformed_image);
-title("Post Log Transform")
+title("Post Log Transform (c = 100)")
 
 
 %%% POWER LAW TRANSFORM %%%
@@ -48,7 +48,7 @@ imshow(fourier);
 title("Pre Power Law");
 subplot(2,2,4);
 imshow(power_law_transformed_image);
-title("Post Power Law");
+title("Post Power Law (gamma = 1.5)");
 
 % Function for log transform
 function s = log_transform(c, r)
