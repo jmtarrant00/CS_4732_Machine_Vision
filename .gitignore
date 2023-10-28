@@ -1,3 +1,4 @@
-
+# Ignore these directories
+Term_Project/dataset
 *.asv
 *.zip
