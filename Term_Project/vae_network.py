@@ -14,9 +14,9 @@ class VAE_NETWORK(nn.Module):
         self.latent_size = latent_size
 
         self.encoder_conv_layers = nn.Sequential(
-            nn.Conv2d(in_channels=depth, out_channels=3, kernel_size=4, stride=2, bias=False),
+            nn.Conv2d(in_channels=depth, out_channels=3, kernel_size=4, stride=2),
             nn.ReLU(),
-            nn.Conv2d(in_channels=3, out_channels=6, kernel_size=2, stride=1, bias=False),
+            nn.Conv2d(in_channels=3, out_channels=6, kernel_size=2, stride=1),
             nn.ReLU()
         )
 
@@ -26,9 +26,9 @@ class VAE_NETWORK(nn.Module):
         self.log_var_layer = nn.Linear(self.output_size, self.output_size)
 
         self.decoder_conv_layers = nn.Sequential(
-            nn.ConvTranspose2d(in_channels=6, out_channels=3, kernel_size=2, stride=1, bias=False),
+            nn.ConvTranspose2d(in_channels=6, out_channels=3, kernel_size=2, stride=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(in_channels=3, out_channels=depth, kernel_size=4, stride=2, bias=False),
+            nn.ConvTranspose2d(in_channels=3, out_channels=depth, kernel_size=4, stride=2),
             nn.Sigmoid()
         )
 
