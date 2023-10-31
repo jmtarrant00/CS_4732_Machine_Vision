@@ -5,3 +5,5 @@ Term_Project/dataset
 # Ignore these extensions
 *.asv
 *.zip
+
+# Ignore these specific files
