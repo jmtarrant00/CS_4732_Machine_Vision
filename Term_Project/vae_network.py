@@ -14,9 +14,10 @@ class VAE_NETWORK(nn.Module):
         self.latent_size = latent_size
 
         self.encoder_conv_layers = nn.Sequential(
-            nn.Conv2d(in_channels=depth, out_channels=6, kernel_size=4, stride=2),
+            nn.Conv2d(in_channels=depth, out_channels=6, kernel_size=8, stride=2),
+            nn.Conv2d(in_channels=6, out_channels=10, kernel_size=5, stride=2),
             nn.ReLU(),
-            nn.Conv2d(in_channels=6, out_channels=12, kernel_size=2, stride=1),
+            nn.Conv2d(in_channels=10, out_channels=12, kernel_size=3, stride=2),
             nn.ReLU()
         )
 
@@ -25,11 +26,12 @@ class VAE_NETWORK(nn.Module):
         self.mean_layer = nn.Linear(self.output_size, self.output_size)
         self.log_var_layer = nn.Linear(self.output_size, self.output_size)
 
+
         self.decoder_conv_layers = nn.Sequential(
-            nn.ConvTranspose2d(in_channels=12, out_channels=6, kernel_size=2, stride=1),
+            nn.ConvTranspose2d(in_channels=12, out_channels=10, kernel_size=3, stride=2),
             nn.ReLU(),
-            nn.ConvTranspose2d(in_channels=6, out_channels=depth, kernel_size=4, stride=2),
-            nn.Sigmoid()
+            nn.ConvTranspose2d(in_channels=10, out_channels=6, kernel_size=5, stride=2),
+            nn.ConvTranspose2d(in_channels=6, out_channels=depth, kernel_size=8, stride=2),
         )
 
 
@@ -39,7 +41,7 @@ class VAE_NETWORK(nn.Module):
         x = x.view(x.size(0), -1)
         self.output_size = x.size(1)
 
-    def reparameterization(self, mean, log_var):
+    def reparameterization(self, mean, log_var) -> torch.Tensor:
         std = torch.exp(0.5 * log_var).to(device)
         epsilon = torch.randn_like(std).to(device)
         z = mean + epsilon * std
