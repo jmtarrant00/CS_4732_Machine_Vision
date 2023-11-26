@@ -8,3 +8,4 @@ Term_Project/dataset
 
 # Ignore these specific files
 Term_Project/loss_plot.svg
+Term_Project/output_size*
