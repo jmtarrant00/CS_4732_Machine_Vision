@@ -7,4 +7,4 @@ Term_Project/dataset
 *.zip
 
 # Ignore these specific files
-Term_Project/model_architecture.txt
+Term_Project/loss_plot.svg
