@@ -1,10 +1,10 @@
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
+import piq
 import time
 import torch
 import torch.amp
-import torchvision
 import torchvision.transforms as transforms
 import vae_network as vae_network
 
@@ -50,10 +50,10 @@ image, label = dataset[0]
 depth, width, height = image.shape
 
 # Split the data into training and testing sets
-num_images = len(dataset)
-train_size = int(num_images * 0.6)
-val_size = int(num_images * 0.1)
-test_size = num_images - train_size - val_size
+num_train_images = len(dataset)
+train_size = int(num_train_images * 0.6)
+val_size = int(num_train_images * 0.1)
+test_size = num_train_images - train_size - val_size
 
 train_set, validation_set, test_set = random_split(dataset, [train_size, val_size, test_size])
 
@@ -65,7 +65,7 @@ test_loader = DataLoader(test_set, batch_size=100, shuffle=False)
 
 # Initialize the model
 if not args.checkpoint:
-    model = vae_network.VAE_NETWORK(depth=depth, width=width, height=height, latent_size=16)
+    model = vae_network.VAE_NETWORK(depth=depth, width=width, height=height)
     # Initialize the optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
     scaler = GradScaler()
@@ -84,57 +84,137 @@ architecture_file.close()
 
 
 ### TRAINING PHASE ###
+if not args.checkpoint:
+    # Set the autocast type based on the device
+    if device == 'cuda':
+        autocast_type = torch.float16
+    else:
+        autocast_type = torch.bfloat16
 
-# Set the autocast type based on the device
-if device == 'cuda':
-    autocast_type = torch.float16
-else:
-    autocast_type = torch.bfloat16
+    # Set up a list for losses
+    loss_list = []
 
-# Set up a list for losses
-loss_list = []
+    pbar_update = 100 / (args.epochs * 10)
+    print(pbar_update)
 
-pbar_update = args.epochs / 10
 
-start_time = time()
-with tqdm(total=100) as pbar:
-    for epoch in range(args.epochs):
-        for images, labels in train_loader:
-            with torch.autocast(device_type=device, dtype=autocast_type):
-                # Move the tensors to device
-                images = images.to(device)
-                labels = labels.to(device)
+    first_validation = True
+    completed_epochs = 0
+    start_time = time()
+    with tqdm(total=100) as pbar:
+        for epoch in range(args.epochs):
+            model.train()
+            for train_images, _ in train_loader:
+                with torch.autocast(device_type=device, dtype=autocast_type):
+                    # Move the tensors to device
+                    train_images = train_images.to(device)
+                
+                    # Run the train_images through the network
+                    outputs, mean, log_var = model(train_images)
+                    loss = model.loss_fn(train_images, outputs, mean, log_var)
+
+                optimizer.zero_grad()
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+
+                pbar.update(pbar_update)
+
+            loss_list.append(loss.item())
+
+
+            # Validation
             
-                # Run the images through the network
-                outputs, mean, log_var = model(images)
-                loss = model.loss_fn(images, outputs, mean, log_var)
+            model.eval()
+            with torch.no_grad():
+                for valid_images, _ in validation_loader:
+                    with torch.autocast(device_type=device, dtype=autocast_type):
+                        # Move the tensors to device
+                        valid_images = valid_images.to(device)
+                    
+                        # Run the train_images through the network
+                        outputs, mean, log_var = model(valid_images)
+                        validation_loss = model.loss_fn(valid_images, outputs, mean, log_var)
 
-            optimizer.zero_grad()
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+                if first_validation:
+                    old_validation_loss = validation_loss
+                    first_validation = False
 
-            pbar.update(pbar_update)
-        loss_list.append(loss.item())
+                if validation_loss > old_validation_loss:
+                    break
+                else:
+                    old_validation_loss = validation_loss
+            completed_epochs += 1
+
+            
+    
+
+    end_time = time()
+    # Print out some training stats
+    print('\n----- TRAINING STATS -----')
+    print(f'Training time: {(end_time - start_time):.2f}')
+    print(f'Completed {completed_epochs} epochs')
+    print(f'Max Loss: {np.max(loss_list)}')
+    print(f'Min Loss: {np.min(loss_list)}')
+    print(f'Average Loss: {np.average(loss_list):.3f}\n')
+
+
+    # Graph the loss if asked for 
+    if args.graph:
+        plt.figure()
+        plt.plot([x for x in range(len(loss_list))], loss_list)
+        plt.xlabel('Epochs')
+        plt.ylabel('Loss')
+        plt.title('Loss over Epochs')
+        plt.savefig('loss_plot.svg')
+
+
+### TESTING PHASE ###
+
+# Initalize Testing Loss
+testing_loss = 0
+
+# Initalize some lists to hold various testing stats
+testing_loss_list = []
+psnr_list = torch.tensor([], device=device)
+brisque_list = torch.tensor([], device=device)
+ssim_list = torch.tensor([], device=device)
+
+# Set the model into eval mode
+model.eval()
+
+# Turn off the gradients
+with torch.no_grad():
+    for test_images, _ in test_loader:
+        with torch.autocast(device_type=device):
+            # Move the image tensors to the device
+            test_images = test_images.to(device)
+
+            # Run the images through the newtork
+            test_outputs, mean, log_var = model(test_images)
+            testing_loss = model.loss_fn(test_images, test_outputs, mean, log_var)
+
+            test_outputs = torch.clamp(test_outputs, min=0)
+
+            # Calculate some testing stats
+            psnr = piq.psnr(test_outputs, test_images, convert_to_greyscale=True)
+            psnr_list = torch.cat([psnr_list, psnr.unsqueeze(0)])
+
+            brisque = piq.brisque(test_outputs, kernel_size=7)
+            brisque_list = torch.cat([brisque_list, brisque.unsqueeze(0)])
+
+            ssim = piq.ssim(test_images, test_outputs)
+            ssim_list = torch.cat([ssim_list, brisque.unsqueeze(0)])
+
         
+        testing_loss_list.append(testing_loss.item())
 
 
-end_time = time()
-# Print out some training stats
-print('\n----- TRAINING STATS -----')
-print(f'Training time: {(end_time - start_time):.2f}')
-print(f'Max Loss: {np.max(loss_list)}')
-print(f'Min Loss: {np.min(loss_list)}')
-print(f'Average Loss: {np.average(loss_list):.3f}\n')
+# Print out some testing stats
+print('\n----- TESTING STATS -----')
+print(f'Peak Signal-to-Noise Ratio (PSNR):  \t{torch.mean(psnr_list)}')
+print(f'BRISQUE Score:                      \t{torch.mean(brisque_list)}')
+print(f'Structural Similarity Index Measure:\t{torch.mean(ssim_list)}')
 
-
-# Graph the loss if asked for 
-if args.graph:
-    plt.figure()
-    plt.plot([x for x in range(args.epochs)], loss_list)
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-    plt.title('Loss over Epochs')
-    plt.savefig('loss_plot.svg')
-
-### TESTING PHASE
+# Save the model 
+torch.save([model.kwargs, model.state_dict()], 'model.pth')
