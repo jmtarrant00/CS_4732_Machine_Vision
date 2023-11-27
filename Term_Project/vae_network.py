@@ -5,13 +5,19 @@ device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('
 
 
 class VAE_NETWORK(nn.Module):
-    def __init__(self, depth, width, height, latent_size):
+    def __init__(self, depth, width, height):
         super().__init__()
 
         self.depth = depth
         self.width = width
         self.height = height
-        self.latent_size = latent_size
+
+        self.kwargs = {
+            'depth' : self.depth,
+            'width' : self.width,
+            'height' : self.height
+            
+        }
 
         self.encoder_conv_layers = nn.Sequential(
             nn.Conv2d(in_channels=depth, out_channels=6, kernel_size=8, stride=2),
@@ -69,7 +75,7 @@ class VAE_NETWORK(nn.Module):
     def KL_Divergence(self, mean, log_var):
         return -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
 
-    def loss_fn(self, input, reconstructed, mean, log_var):
+    def loss_fn(self, input:torch.Tensor, reconstructed:torch.Tensor, mean:torch.Tensor, log_var:torch.Tensor):
         reconstruction_loss = self.reconstuction_loss(input, reconstructed)
         KL_Divergence = self.KL_Divergence(mean, log_var)
 
