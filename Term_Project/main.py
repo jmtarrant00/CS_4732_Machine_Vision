@@ -12,6 +12,7 @@ from sys import exit
 from time import time
 from torch.utils.data import DataLoader, random_split
 from torchvision.datasets import ImageFolder
+from torchvision.utils import save_image
 from torch.cuda.amp import GradScaler
 from tqdm import tqdm
 
@@ -26,7 +27,7 @@ parser = argparse.ArgumentParser()
 
 # Set the arguments for the parser
 parser.add_argument('-e', '--epochs', type=int, help='Specify the number of epochs for the training loop to run.')
-parser.add_argument('-lr', '--learning_rate', type=float, default=0.0001,
+parser.add_argument('-lr', '--learning_rate', type=float, default=0.001,
                     help='Specify the learning rate for the training phase. Default value is 0.001.')
 parser.add_argument('-c', '--checkpoint', type=str, help='Give the path for a checkpoint to load a model from.')
 parser.add_argument('-g', dest='graph', action='store_true', help='Saves a graph of the loss over epochs')
@@ -111,6 +112,9 @@ if not args.checkpoint:
                 
                     # Run the train_images through the network
                     outputs, mean, log_var = model(train_images)
+                    outputs = torch.clamp(outputs, min=0, max=1)
+
+                    
                     loss = model.loss_fn(train_images, outputs, mean, log_var)
 
                 optimizer.zero_grad()
@@ -133,8 +137,9 @@ if not args.checkpoint:
                         valid_images = valid_images.to(device)
                     
                         # Run the train_images through the network
-                        outputs, mean, log_var = model(valid_images)
-                        validation_loss = model.loss_fn(valid_images, outputs, mean, log_var)
+                        valid_outputs, mean, log_var = model(valid_images)
+                        valid_outputs = torch.clamp(valid_outputs, min=0, max=1)
+                        validation_loss = model.loss_fn(valid_images, valid_outputs, mean, log_var)
 
                 if first_validation:
                     old_validation_loss = validation_loss
@@ -152,7 +157,7 @@ if not args.checkpoint:
     end_time = time()
     # Print out some training stats
     print('\n----- TRAINING STATS -----')
-    print(f'Training time: {(end_time - start_time):.2f}')
+    print(f'Training time: {(end_time - start_time):.2f} secs')
     print(f'Completed {completed_epochs} epochs')
     print(f'Max Loss: {np.max(loss_list)}')
     print(f'Min Loss: {np.min(loss_list)}')
@@ -176,9 +181,9 @@ testing_loss = 0
 
 # Initalize some lists to hold various testing stats
 testing_loss_list = []
-psnr_list = torch.tensor([], device=device)
-brisque_list = torch.tensor([], device=device)
-ssim_list = torch.tensor([], device=device)
+psnr_list = torch.tensor([],dtype=torch.float, device=device)
+brisque_list = torch.tensor([],dtype=torch.float, device=device)
+ssim_list = torch.tensor([],dtype=torch.float, device=device)
 
 # Set the model into eval mode
 model.eval()
@@ -197,17 +202,20 @@ with torch.no_grad():
             test_outputs = torch.clamp(test_outputs, min=0)
 
             # Calculate some testing stats
-            psnr = piq.psnr(test_outputs, test_images, convert_to_greyscale=True)
-            psnr_list = torch.cat([psnr_list, psnr.unsqueeze(0)])
+            for i in range(test_outputs.shape[0]):
+                psnr = piq.psnr(test_outputs[i:i+1], test_images[i:i+1], convert_to_greyscale=True)
+                psnr_list = torch.cat([psnr_list, psnr.unsqueeze(0)])
 
-            brisque = piq.brisque(test_outputs, kernel_size=7)
-            brisque_list = torch.cat([brisque_list, brisque.unsqueeze(0)])
+                brisque = piq.brisque(test_outputs, kernel_size=7)
+                brisque_list = torch.cat([brisque_list, brisque.unsqueeze(0)])
 
-            ssim = piq.ssim(test_images, test_outputs)
-            ssim_list = torch.cat([ssim_list, brisque.unsqueeze(0)])
-
+                ssim = piq.ssim(test_images, test_outputs, kernel_size=3)
+                ssim_list = torch.cat([ssim_list, ssim.unsqueeze(0)])
         
         testing_loss_list.append(testing_loss.item())
+        save_image(test_images[0], 'output_images/original.svg')
+        save_image(test_outputs[0], 'output_images/denoised.svg')
+
 
 
 # Print out some testing stats
@@ -215,6 +223,7 @@ print('\n----- TESTING STATS -----')
 print(f'Peak Signal-to-Noise Ratio (PSNR):  \t{torch.mean(psnr_list)}')
 print(f'BRISQUE Score:                      \t{torch.mean(brisque_list)}')
 print(f'Structural Similarity Index Measure:\t{torch.mean(ssim_list)}')
+
 
 # Save the model 
 torch.save([model.kwargs, model.state_dict()], 'model.pth')
