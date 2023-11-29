@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+from piq import ssim
+
 device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
 
@@ -74,9 +76,15 @@ class VAE_NETWORK(nn.Module):
     
     def KL_Divergence(self, mean, log_var):
         return -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
+    
+    def SSIM_loss(self, input, reconstructed):
+        return ssim(reconstructed, input, kernel_size=3)
 
     def loss_fn(self, input:torch.Tensor, reconstructed:torch.Tensor, mean:torch.Tensor, log_var:torch.Tensor):
         reconstruction_loss = self.reconstuction_loss(input, reconstructed)
         KL_Divergence = self.KL_Divergence(mean, log_var)
-
-        return reconstruction_loss + KL_Divergence
+        input = torch.clamp(input=input, min=0, max=1)
+        reconstructed = torch.clamp(reconstructed, min=0, max=1)
+        ssim_loss = self.SSIM_loss(input, reconstructed)
+        
+        return 0.4 * reconstruction_loss + 0.2 * KL_Divergence + 0.4 * ssim_loss
