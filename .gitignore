@@ -1,5 +1,6 @@
 # Ignore these directories
 Term_Project/dataset
+Term_Project/output_images
 *__pycache__
 
 # Ignore these extensions
